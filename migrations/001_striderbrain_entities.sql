@@ -132,7 +132,6 @@ CREATE TABLE stridebrain.historical_cost_cases (
     (cost_basis='actual_reconciled'
      AND source_revision_id IS NOT NULL
      AND completed_on IS NOT NULL
-     AND completed_on <= current_date
      AND reviewer_subject IS NOT NULL
      AND verified_at IS NOT NULL)
   )
