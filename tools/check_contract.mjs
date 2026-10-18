@@ -56,16 +56,17 @@ check((schema.match(/FOREIGN KEY \(organization_id,/g)||[]).length>=8,
 for(const trigger of [
  "sb_cost_case_guard","sb_verified_cost_lines_guard",
  "sb_approved_revision_guard","sb_quotation_approval_guard",
- "sb_approved_quotation_lines_guard","sb_audit_append_only"
+ "sb_approved_quotation_lines_guard","sb_decided_approval_guard","sb_audit_append_only"
 ])check(guards.includes("CREATE TRIGGER "+trigger),"Missing integrity trigger "+trigger);
-check(guards.includes("FOR UPDATE;"),"Concurrent mutation locks missing");
+check((guards.match(/FOR UPDATE;/g)||[]).length>=2,"Concurrent cost and quote mutation locks missing");
 check(guards.includes("to_jsonb(OLD) - 'state'"),"Approved quote freeze rule missing");
+check(guards.includes("blob_scan_state IS DISTINCT FROM 'passed'"),"Approved actual costs must use malware-cleared source evidence");
 for(const [name,text] of [["entities",schema],["policies",policies],["guards",guards]]){
  check(/^\s*BEGIN;/m.test(text),"Missing BEGIN in "+name);
  check(/\bCOMMIT;\s*$/.test(text),"Missing COMMIT in "+name);
 }
 
-const summary={tables:tableNames.length,readPolicies:expectedReads.length,integrityTriggers:6,problems:failures.length};
+const summary={tables:tableNames.length,readPolicies:expectedReads.length,integrityTriggers:7,problems:failures.length};
 if(failures.length){
  console.error("StrideBrain schema STATIC CONTRACT: FAIL",summary);
  for(const problem of failures)console.error(" - "+problem);
