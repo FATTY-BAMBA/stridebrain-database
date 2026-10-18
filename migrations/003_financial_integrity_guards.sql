@@ -166,6 +166,15 @@ BEGIN
       RAISE EXCEPTION 'An approved/issued quotation requires a matching decided approval request.'
         USING ERRCODE='23514';
     END IF;
+
+    IF NEW.pricing_method='historical_comparison' AND NOT EXISTS (
+      SELECT 1 FROM stridebrain.quotation_precedents evidence
+       WHERE evidence.organization_id=NEW.organization_id
+         AND evidence.quotation_id=NEW.id
+    ) THEN
+      RAISE EXCEPTION 'Historical quotations require at least one verified, linked cost precedent.'
+        USING ERRCODE='23514';
+    END IF;
   END IF;
 
   RETURN NEW;
@@ -217,6 +226,67 @@ CREATE TRIGGER sb_approved_quotation_lines_guard
  FOR EACH ROW EXECUTE FUNCTION stridebrain.guard_issued_quotation_lines();
 
 
+
+-- An historical quotation may link only to a verified, same-tenant actual-cost
+-- record. A draft quote can gain/lose links; an approved or issued quote cannot.
+CREATE OR REPLACE FUNCTION stridebrain.guard_quotation_precedents()
+RETURNS trigger LANGUAGE plpgsql SET search_path = ''
+AS $
+DECLARE
+  target_org uuid;
+  target_quote uuid;
+  quote_state text;
+  case_state text;
+  cost_basis text;
+BEGIN
+  IF TG_OP='DELETE' THEN
+    target_org := OLD.organization_id;
+    target_quote := OLD.quotation_id;
+  ELSE
+    target_org := NEW.organization_id;
+    target_quote := NEW.quotation_id;
+  END IF;
+
+  SELECT q.state INTO quote_state
+    FROM stridebrain.quotation_drafts q
+   WHERE q.organization_id=target_org AND q.id=target_quote
+   FOR UPDATE;
+
+  IF quote_state IN ('approved','issued') THEN
+    RAISE EXCEPTION 'Approved/issued quotation evidence is immutable.'
+      USING ERRCODE='23514';
+  END IF;
+
+  IF TG_OP='UPDATE' AND (OLD.organization_id IS DISTINCT FROM NEW.organization_id
+                        OR OLD.quotation_id IS DISTINCT FROM NEW.quotation_id
+                        OR OLD.cost_case_id IS DISTINCT FROM NEW.cost_case_id) THEN
+    RAISE EXCEPTION 'Evidence references cannot be moved to a different case.'
+      USING ERRCODE='23514';
+  END IF;
+
+  IF TG_OP<>'DELETE' THEN
+    SELECT c.verification_status,c.cost_basis INTO case_state,cost_basis
+      FROM stridebrain.historical_cost_cases c
+     WHERE c.organization_id=NEW.organization_id AND c.id=NEW.cost_case_id;
+
+    IF case_state IS DISTINCT FROM 'verified_actual'
+       OR cost_basis IS DISTINCT FROM 'actual_reconciled' THEN
+      RAISE EXCEPTION 'A historical quotation precedent must be a verified actual-cost case.'
+        USING ERRCODE='23514';
+    END IF;
+  END IF;
+
+  IF TG_OP='DELETE' THEN
+    RETURN OLD;
+  END IF;
+  RETURN NEW;
+END;
+$;
+
+CREATE TRIGGER sb_quotation_precedent_guard
+ BEFORE INSERT OR UPDATE OR DELETE ON stridebrain.quotation_precedents
+ FOR EACH ROW EXECUTE FUNCTION stridebrain.guard_quotation_precedents();
+
 -- A decided approval cannot be retracted, rewritten or deleted.
 -- Reversal requires a new, separately auditable business event.
 CREATE OR REPLACE FUNCTION stridebrain.guard_decided_approval()
@@ -265,5 +335,6 @@ REVOKE ALL ON FUNCTION stridebrain.guard_quotation_approval() FROM PUBLIC;
 REVOKE ALL ON FUNCTION stridebrain.guard_issued_quotation_lines() FROM PUBLIC;
 REVOKE ALL ON FUNCTION stridebrain.prevent_audit_rewrite() FROM PUBLIC;
 REVOKE ALL ON FUNCTION stridebrain.guard_decided_approval() FROM PUBLIC;
+REVOKE ALL ON FUNCTION stridebrain.guard_quotation_precedents() FROM PUBLIC;
 
 COMMIT;
