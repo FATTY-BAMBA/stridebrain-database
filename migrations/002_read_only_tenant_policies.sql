@@ -62,6 +62,7 @@ ALTER TABLE stridebrain.historical_cost_cases ENABLE ROW LEVEL SECURITY;
 ALTER TABLE stridebrain.historical_cost_lines ENABLE ROW LEVEL SECURITY;
 ALTER TABLE stridebrain.quotation_drafts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE stridebrain.quotation_lines ENABLE ROW LEVEL SECURITY;
+ALTER TABLE stridebrain.quotation_precedents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE stridebrain.approval_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE stridebrain.work_tasks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE stridebrain.audit_events ENABLE ROW LEVEL SECURITY;
@@ -75,6 +76,7 @@ ALTER TABLE stridebrain.historical_cost_cases FORCE ROW LEVEL SECURITY;
 ALTER TABLE stridebrain.historical_cost_lines FORCE ROW LEVEL SECURITY;
 ALTER TABLE stridebrain.quotation_drafts FORCE ROW LEVEL SECURITY;
 ALTER TABLE stridebrain.quotation_lines FORCE ROW LEVEL SECURITY;
+ALTER TABLE stridebrain.quotation_precedents FORCE ROW LEVEL SECURITY;
 ALTER TABLE stridebrain.approval_requests FORCE ROW LEVEL SECURITY;
 ALTER TABLE stridebrain.work_tasks FORCE ROW LEVEL SECURITY;
 ALTER TABLE stridebrain.audit_events FORCE ROW LEVEL SECURITY;
@@ -134,6 +136,10 @@ CREATE POLICY quotation_lines_read_finance ON stridebrain.quotation_lines
 FOR SELECT TO authenticated
 USING (stridebrain.is_org_finance_reader(organization_id));
 
+CREATE POLICY quotation_precedents_read_finance ON stridebrain.quotation_precedents
+FOR SELECT TO authenticated
+USING (stridebrain.is_org_finance_reader(organization_id));
+
 CREATE POLICY approvals_read_finance ON stridebrain.approval_requests
 FOR SELECT TO authenticated
 USING (stridebrain.is_org_finance_reader(organization_id));
@@ -154,6 +160,7 @@ GRANT SELECT ON stridebrain.historical_cost_cases TO authenticated;
 GRANT SELECT ON stridebrain.historical_cost_lines TO authenticated;
 GRANT SELECT ON stridebrain.quotation_drafts TO authenticated;
 GRANT SELECT ON stridebrain.quotation_lines TO authenticated;
+GRANT SELECT ON stridebrain.quotation_precedents TO authenticated;
 GRANT SELECT ON stridebrain.approval_requests TO authenticated;
 GRANT SELECT ON stridebrain.work_tasks TO authenticated;
 GRANT SELECT ON stridebrain.audit_events TO authenticated;
