@@ -130,11 +130,7 @@ DECLARE has_approval boolean;
 BEGIN
   IF TG_OP='UPDATE' AND OLD.state IN ('approved','issued') AND
       NOT (OLD.state='approved' AND NEW.state='issued'
-           AND OLD.approved_by IS NOT DISTINCT FROM NEW.approved_by
-           AND OLD.approved_at IS NOT DISTINCT FROM NEW.approved_at
-           AND OLD.work_object_id IS NOT DISTINCT FROM NEW.work_object_id
-           AND OLD.proposed_price_before_tax IS NOT DISTINCT FROM NEW.proposed_price_before_tax
-           AND OLD.tax_estimate IS NOT DISTINCT FROM NEW.tax_estimate) THEN
+           AND (to_jsonb(OLD) - 'state') = (to_jsonb(NEW) - 'state')) THEN
     RAISE EXCEPTION 'An approved quotation cannot be reopened or altered; issue only or create a new revision.'
       USING ERRCODE='23514';
   END IF;
