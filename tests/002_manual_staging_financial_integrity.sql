@@ -132,6 +132,26 @@ BEGIN
 EXCEPTION WHEN check_violation THEN NULL;
 END $$;
 
+
+-- Only a verified actual-cost record may support a historical quotation.
+-- Quote-only cases cannot be laundered into historical cost evidence.
+INSERT INTO stridebrain.historical_cost_cases
+ (organization_id,id,work_object_id,cost_basis,verification_status,normalized_quantity,normalized_unit,direct_cost_total,created_by)
+VALUES
+ ('00000000-0000-4000-8000-000000001a11','00000000-0000-4000-8000-000000002511',
+  '00000000-0000-4000-8000-000000001b11','quoted','draft',28,'ping',100000,'test_integrity_owner');
+
+DO $
+BEGIN
+ INSERT INTO stridebrain.quotation_precedents
+ (organization_id,id,quotation_id,cost_case_id,relevance_score)
+ VALUES
+ ('00000000-0000-4000-8000-000000001a11','00000000-0000-4000-8000-000000002611',
+  '00000000-0000-4000-8000-000000002111','00000000-0000-4000-8000-000000002511',0.9);
+ RAISE EXCEPTION 'FAIL: quote-only historical record was used as verified cost evidence';
+EXCEPTION WHEN check_violation THEN NULL;
+END $;
+
 INSERT INTO stridebrain.approval_requests
  (organization_id,id,quotation_id,status,requested_by)
 VALUES
@@ -142,11 +162,18 @@ UPDATE stridebrain.approval_requests SET
  status='approved',decided_by='test_integrity_owner',decided_at=now()
 WHERE id='00000000-0000-4000-8000-000000002311';
 
+INSERT INTO stridebrain.quotation_precedents
+ (organization_id,id,quotation_id,cost_case_id,relevance_score,comparison_note)
+VALUES
+ ('00000000-0000-4000-8000-000000001a11','00000000-0000-4000-8000-000000002612',
+  '00000000-0000-4000-8000-000000002111','00000000-0000-4000-8000-000000001f11',
+  0.8750,'Verified example completed-cost comparison, staging only');
+
 UPDATE stridebrain.quotation_drafts SET state='approved',
  approved_by='test_integrity_owner',approved_at=now()
 WHERE id='00000000-0000-4000-8000-000000002111';
 
-DO $$
+DO $
 BEGIN
  UPDATE stridebrain.quotation_drafts SET state='draft'
  WHERE id='00000000-0000-4000-8000-000000002111';
@@ -154,13 +181,21 @@ BEGIN
 EXCEPTION WHEN check_violation THEN NULL;
 END $$;
 
-DO $$
+DO $
 BEGIN
  UPDATE stridebrain.quotation_lines SET line_total=1
  WHERE id='00000000-0000-4000-8000-000000002211';
  RAISE EXCEPTION 'FAIL: approved quote line was changed';
 EXCEPTION WHEN check_violation THEN NULL;
-END $$;
+END $;
+
+DO $
+BEGIN
+ DELETE FROM stridebrain.quotation_precedents
+ WHERE id='00000000-0000-4000-8000-000000002612';
+ RAISE EXCEPTION 'FAIL: approved historical quotation source evidence was removed';
+EXCEPTION WHEN check_violation THEN NULL;
+END $;
 
 UPDATE stridebrain.quotation_drafts SET state='issued'
 WHERE id='00000000-0000-4000-8000-000000002111';
