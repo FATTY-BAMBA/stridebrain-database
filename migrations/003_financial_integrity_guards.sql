@@ -12,6 +12,7 @@ DECLARE
   ledger_count bigint;
   ledger_total numeric(18,2);
   document_state text;
+  blob_scan_state text;
 BEGIN
   IF TG_OP = 'UPDATE' AND OLD.verification_status = 'verified_actual' THEN
     RAISE EXCEPTION 'Verified actual costs are immutable. Create a new reviewed version.'
@@ -36,6 +37,16 @@ BEGIN
 
     IF document_state IS DISTINCT FROM 'approved' THEN
       RAISE EXCEPTION 'Actual-cost verification requires a human-approved source revision.'
+        USING ERRCODE='23514';
+    END IF;
+
+    SELECT f.scan_state INTO blob_scan_state
+      FROM stridebrain.private_file_blobs f
+     WHERE f.organization_id=NEW.organization_id
+       AND f.revision_id=NEW.source_revision_id;
+
+    IF blob_scan_state IS DISTINCT FROM 'passed' THEN
+      RAISE EXCEPTION 'Actual-cost verification requires scanned, private source-file evidence.'
         USING ERRCODE='23514';
     END IF;
 
@@ -205,6 +216,28 @@ CREATE TRIGGER sb_approved_quotation_lines_guard
  BEFORE INSERT OR UPDATE OR DELETE ON stridebrain.quotation_lines
  FOR EACH ROW EXECUTE FUNCTION stridebrain.guard_issued_quotation_lines();
 
+
+-- A decided approval cannot be retracted, rewritten or deleted.
+-- Reversal requires a new, separately auditable business event.
+CREATE OR REPLACE FUNCTION stridebrain.guard_decided_approval()
+RETURNS trigger LANGUAGE plpgsql SET search_path = ''
+AS $
+BEGIN
+  IF OLD.status IN ('approved','rejected') THEN
+    RAISE EXCEPTION 'A decided approval is immutable; create a new review request.'
+      USING ERRCODE='23514';
+  END IF;
+  IF TG_OP='DELETE' THEN
+    RETURN OLD;
+  END IF;
+  RETURN NEW;
+END;
+$;
+
+CREATE TRIGGER sb_decided_approval_guard
+ BEFORE UPDATE OR DELETE ON stridebrain.approval_requests
+ FOR EACH ROW EXECUTE FUNCTION stridebrain.guard_decided_approval();
+
 -- The audit table is append-only even for privileged writers. No client role
 -- receives write privileges through RLS or GRANT.
 CREATE OR REPLACE FUNCTION stridebrain.prevent_audit_rewrite()
@@ -231,5 +264,6 @@ REVOKE ALL ON FUNCTION stridebrain.guard_approved_revision() FROM PUBLIC;
 REVOKE ALL ON FUNCTION stridebrain.guard_quotation_approval() FROM PUBLIC;
 REVOKE ALL ON FUNCTION stridebrain.guard_issued_quotation_lines() FROM PUBLIC;
 REVOKE ALL ON FUNCTION stridebrain.prevent_audit_rewrite() FROM PUBLIC;
+REVOKE ALL ON FUNCTION stridebrain.guard_decided_approval() FROM PUBLIC;
 
 COMMIT;
