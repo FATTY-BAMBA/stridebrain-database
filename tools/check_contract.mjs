@@ -18,7 +18,7 @@ const failures=[];
 const check=(condition,description)=>{if(!condition)failures.push(description);};
 const tableNames=[...schema.matchAll(/CREATE TABLE\s+stridebrain\.(\w+)/g)].map(x=>x[1]);
 const unique=new Set(tableNames);
-check(tableNames.length===12,"Expected 12 tenant-owned tables");
+check(tableNames.length===13,"Expected 12 tenant-owned tables");
 check(unique.size===tableNames.length,"Duplicate table name");
 
 for(const name of tableNames){
@@ -30,7 +30,7 @@ for(const name of tableNames){
 const expectedReads=[
  "tenant_settings","work_objects","source_documents","document_revisions",
  "historical_cost_cases","historical_cost_lines","quotation_drafts","quotation_lines",
- "approval_requests","work_tasks","audit_events"
+ "approval_requests","quotation_precedents","work_tasks","audit_events"
 ];
 for(const name of expectedReads){
  check(new RegExp("CREATE POLICY\\s+\\w+\\s+ON\\s+stridebrain\\."+name+"\\s+FOR SELECT TO authenticated","i").test(policies),
@@ -56,17 +56,18 @@ check((schema.match(/FOREIGN KEY \(organization_id,/g)||[]).length>=8,
 for(const trigger of [
  "sb_cost_case_guard","sb_verified_cost_lines_guard",
  "sb_approved_revision_guard","sb_quotation_approval_guard",
- "sb_approved_quotation_lines_guard","sb_decided_approval_guard","sb_audit_append_only"
+ "sb_approved_quotation_lines_guard","sb_quotation_precedent_guard","sb_decided_approval_guard","sb_audit_append_only"
 ])check(guards.includes("CREATE TRIGGER "+trigger),"Missing integrity trigger "+trigger);
 check((guards.match(/FOR UPDATE;/g)||[]).length>=2,"Concurrent cost and quote mutation locks missing");
 check(guards.includes("to_jsonb(OLD) - 'state'"),"Approved quote freeze rule missing");
 check(guards.includes("blob_scan_state IS DISTINCT FROM 'passed'"),"Approved actual costs must use malware-cleared source evidence");
+check(guards.includes("Historical quotations require at least one verified, linked cost precedent"),"Historical quote approval must require verified cost evidence");
 for(const [name,text] of [["entities",schema],["policies",policies],["guards",guards]]){
  check(/^\s*BEGIN;/m.test(text),"Missing BEGIN in "+name);
  check(/\bCOMMIT;\s*$/.test(text),"Missing COMMIT in "+name);
 }
 
-const summary={tables:tableNames.length,readPolicies:expectedReads.length,integrityTriggers:7,problems:failures.length};
+const summary={tables:tableNames.length,readPolicies:expectedReads.length,integrityTriggers:8,problems:failures.length};
 if(failures.length){
  console.error("StrideBrain schema STATIC CONTRACT: FAIL",summary);
  for(const problem of failures)console.error(" - "+problem);
