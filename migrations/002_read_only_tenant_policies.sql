@@ -104,6 +104,7 @@ CREATE POLICY revisions_read_via_parent ON stridebrain.document_revisions
 FOR SELECT TO authenticated
 USING (
   stridebrain.is_org_member(organization_id)
+  AND (lifecycle = 'approved' OR stridebrain.is_org_finance_reader(organization_id))
   AND EXISTS (
     SELECT 1 FROM stridebrain.source_documents AS d
     WHERE d.organization_id = document_revisions.organization_id
