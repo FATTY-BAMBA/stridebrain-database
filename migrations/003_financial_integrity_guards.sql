@@ -78,7 +78,8 @@ BEGIN
   SELECT (c.verification_status='verified_actual') INTO verified
     FROM stridebrain.historical_cost_cases AS c
    WHERE c.organization_id=scope_org
-     AND c.id=scope_case;
+     AND c.id=scope_case
+   FOR UPDATE;
 
   IF verified IS TRUE THEN
     RAISE EXCEPTION 'Cost lines of a verified case cannot be mutated.'
@@ -127,8 +128,14 @@ RETURNS trigger LANGUAGE plpgsql SET search_path = ''
 AS $$
 DECLARE has_approval boolean;
 BEGIN
-  IF TG_OP='UPDATE' AND OLD.state='issued' THEN
-    RAISE EXCEPTION 'Issued quotations are immutable. Create a revised draft.'
+  IF TG_OP='UPDATE' AND OLD.state IN ('approved','issued') AND
+      NOT (OLD.state='approved' AND NEW.state='issued'
+           AND OLD.approved_by IS NOT DISTINCT FROM NEW.approved_by
+           AND OLD.approved_at IS NOT DISTINCT FROM NEW.approved_at
+           AND OLD.work_object_id IS NOT DISTINCT FROM NEW.work_object_id
+           AND OLD.proposed_price_before_tax IS NOT DISTINCT FROM NEW.proposed_price_before_tax
+           AND OLD.tax_estimate IS NOT DISTINCT FROM NEW.tax_estimate) THEN
+    RAISE EXCEPTION 'An approved quotation cannot be reopened or altered; issue only or create a new revision.'
       USING ERRCODE='23514';
   END IF;
 
@@ -171,7 +178,8 @@ BEGIN
   END IF;
 
   SELECT q.state INTO state_now FROM stridebrain.quotation_drafts q
-   WHERE q.organization_id=org_id AND q.id=quotation_id;
+   WHERE q.organization_id=org_id AND q.id=quotation_id
+   FOR UPDATE;
 
   IF state_now IN ('approved','issued') THEN
     RAISE EXCEPTION 'Approved quotation lines cannot be modified. Revise the quote instead.'
@@ -210,5 +218,13 @@ COMMENT ON FUNCTION stridebrain.guard_cost_case_verification() IS
   'Enforces cost evidence and total consistency. Server still must verify real-world source authenticity and authorization.';
 COMMENT ON FUNCTION stridebrain.guard_quotation_approval() IS
   'DB integrity check only, not authentication or approval-role verification. Server must check approval authority.';
+
+-- Only database trigger machinery needs execute rights on these functions.
+REVOKE ALL ON FUNCTION stridebrain.guard_cost_case_verification() FROM PUBLIC;
+REVOKE ALL ON FUNCTION stridebrain.guard_verified_cost_lines() FROM PUBLIC;
+REVOKE ALL ON FUNCTION stridebrain.guard_approved_revision() FROM PUBLIC;
+REVOKE ALL ON FUNCTION stridebrain.guard_quotation_approval() FROM PUBLIC;
+REVOKE ALL ON FUNCTION stridebrain.guard_issued_quotation_lines() FROM PUBLIC;
+REVOKE ALL ON FUNCTION stridebrain.prevent_audit_rewrite() FROM PUBLIC;
 
 COMMIT;
