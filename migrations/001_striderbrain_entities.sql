@@ -195,6 +195,26 @@ CREATE TABLE stridebrain.quotation_lines (
     REFERENCES stridebrain.quotation_drafts(organization_id,id) ON DELETE RESTRICT
 );
 
+
+-- Every historically informed quotation retains which VERIFIED ACTUAL jobs it used.
+-- This is not a claim that those jobs are directly comparable: the estimator
+-- must also preserve cost-code differences, units, current prices and exclusions.
+CREATE TABLE stridebrain.quotation_precedents (
+  organization_id uuid NOT NULL,
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  quotation_id uuid NOT NULL,
+  cost_case_id uuid NOT NULL,
+  relevance_score numeric(5,4) CHECK (relevance_score IS NULL OR relevance_score BETWEEN 0 AND 1),
+  comparison_note text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (organization_id,id),
+  UNIQUE (organization_id,quotation_id,cost_case_id),
+  FOREIGN KEY (organization_id,quotation_id)
+    REFERENCES stridebrain.quotation_drafts(organization_id,id) ON DELETE RESTRICT,
+  FOREIGN KEY (organization_id,cost_case_id)
+    REFERENCES stridebrain.historical_cost_cases(organization_id,id) ON DELETE RESTRICT
+);
+
 CREATE TABLE stridebrain.approval_requests (
   organization_id uuid NOT NULL,
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -252,6 +272,7 @@ CREATE INDEX idx_sb_revisions_document ON stridebrain.document_revisions(organiz
 CREATE INDEX idx_sb_cases_org_work ON stridebrain.historical_cost_cases(organization_id,work_object_id,verification_status);
 CREATE INDEX idx_sb_costlines_case ON stridebrain.historical_cost_lines(organization_id,cost_case_id);
 CREATE INDEX idx_sb_quotes_org_work ON stridebrain.quotation_drafts(organization_id,work_object_id,state);
+CREATE INDEX idx_sb_precedents_quote ON stridebrain.quotation_precedents(organization_id,quotation_id);
 CREATE INDEX idx_sb_tasks_org_work ON stridebrain.work_tasks(organization_id,work_object_id,status);
 CREATE INDEX idx_sb_audit_org_time ON stridebrain.audit_events(organization_id,recorded_at DESC);
 
